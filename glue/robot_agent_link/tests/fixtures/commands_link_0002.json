@@ -1,0 +1,65 @@
+{
+  "schema_version": "2.0",
+  "request_id": "link-0002",
+  "scene_id": 3,
+  "scene_version": 3,
+  "commands": [
+    {
+      "command_id": "1",
+      "skill_name": "approach",
+      "parameters": {
+        "target": 7
+      }
+    },
+    {
+      "command_id": "2",
+      "skill_name": "pick",
+      "parameters": {
+        "target": 7
+      }
+    },
+    {
+      "command_id": "3",
+      "skill_name": "lift_up",
+      "parameters": {
+        "distance": 0.05
+      }
+    },
+    {
+      "command_id": "4",
+      "skill_name": "retreat",
+      "parameters": {
+        "target": 7
+      }
+    },
+    {
+      "command_id": "5",
+      "skill_name": "move_to",
+      "parameters": {
+        "target": "home",
+        "planning_method": "linear"
+      }
+    },
+    {
+      "command_id": "6",
+      "skill_name": "approach",
+      "parameters": {
+        "target": 13
+      }
+    },
+    {
+      "command_id": "7",
+      "skill_name": "put",
+      "parameters": {
+        "target": 13
+      }
+    },
+    {
+      "command_id": "8",
+      "skill_name": "retreat",
+      "parameters": {
+        "target": 13
+      }
+    }
+  ]
+}

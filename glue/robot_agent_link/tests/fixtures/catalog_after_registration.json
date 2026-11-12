@@ -1,0 +1,15 @@
+{
+  "asset_root": "/home/cscvlab/lht/webeditor_runtime/ObjectLibraryServer-1.0.8-rel/data",
+  "scenes": {
+    "3": {
+      "version": 3,
+      "path": "scenes/3/scene.json",
+      "backend_resources": {
+        "mujoco": {
+          "format": "generate_from_scene",
+          "options": {}
+        }
+      }
+    }
+  }
+}

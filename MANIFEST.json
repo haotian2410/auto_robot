@@ -1,0 +1,78 @@
+{
+  "recorded_at": "2026-11-13",
+  "recorded_on_host_paths_root": "/home/cscvlab/lht",
+  "note": "本清单锁定整合栈各组件的远端与 commit。四个组件仓库本体不在 auto_robot 内复制；brain 与前端、控制端在记录时点仍有未提交改动（dirty 数见下），那些改动只存在于工作区，checkout 下列 commit 得不到它们。",
+  "components": {
+    "robot_agent_brain": {
+      "role": "语义大脑：中文 → BrainTurn → grounding → 原子命令 → 执行编排 → 场景写回",
+      "port": "127.0.0.1:8500",
+      "remote": "git@github.com:haotian2410/robot_agent_brain.git",
+      "branch": "main",
+      "head": "05c43e2",
+      "uncommitted_paths": 107,
+      "entry": "robot-brain serve --config config/webeditor.json",
+      "docs": ["docs/contracts.md", "docs/scene_scale_color.md", "docs/webeditor_integration.md"]
+    },
+    "web-frontend": {
+      "role": "local_gateway.py：场景真值 + 浏览器 WS + SPA + 大脑作业 API + 租约仲裁",
+      "port": "0.0.0.0:8099",
+      "remote": "git@github.com:tianlanqqcom/web-frontend.git",
+      "branch": "master",
+      "head": "c182148",
+      "uncommitted_paths": 11,
+      "entry": "python local_gateway.py --port 8099",
+      "build": "SPA 走 dist/，改前端后需 npm run build"
+    },
+    "ObjectLibraryServer": {
+      "role": "资产目录服务（mesh、元数据、场景模板）",
+      "port": "0.0.0.0:8000",
+      "remote": "git@github.com:tianlanqqcom/ObjectLibraryServer.git",
+      "branch": "master",
+      "head": "f6f7497",
+      "uncommitted_paths": 1,
+      "entry": "python server.py",
+      "health": "无 /health，用 GET /list?type=model&uid=0",
+      "data_in_git": false,
+      "data_note": "data/ 417 MB，运行时大脑按文件读 model_index.json / robot_index.json / scene_index.json，两侧 no_display 标记必须一致"
+    },
+    "robot_agent_control": {
+      "role": "控制端：原子技能解释器 + MuJoCo/SimPlatform 物理执行",
+      "port": null,
+      "remote": "https://github.com/Leon-J1n/Auto_Robot_demo",
+      "branch": "main",
+      "head": "414195b",
+      "uncommitted_paths": 8,
+      "entry": "由 link.control_child 以 runpy 执行 demo.run_demo",
+      "physical_library": "/home/cscvlab/lht/_thirdparty/SimPlatform-main/build/libsim_platform_c.so"
+    },
+    "robot_agent_link": {
+      "role": "胶水层：子进程 runner、独立工作区、控制端感知改道本地 Qwen、错误码中文释义、执行反馈归一",
+      "remote": null,
+      "status": "记录时点未托管在任何远端，源码随本仓库 glue/robot_agent_link 保存",
+      "tests": "cd glue/robot_agent_link && pytest tests -q（tests/fake_control 为控制端替身）"
+    }
+  },
+  "not_in_any_repository": {
+    "asset_runtime": "/home/cscvlab/lht/webeditor_runtime/ObjectLibraryServer-1.0.8-rel/data",
+    "model_weights": [
+      "/home/cscvlab/models/qwen3.8-27b/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "/home/cscvlab/models/qwen3.8-27b/mmproj-BF16.gguf"
+    ],
+    "physical_library": "_thirdparty/SimPlatform-main（含本仓库未记录的本地补丁与构建参数）",
+    "run_artefacts": "var/webeditor/tasks、var/lian-tiao（live world 备份与驱动脚本）",
+    "scratch_workspace": "robot_agent_workspace（每次执行的暂存与 report.json）"
+  },
+  "environments": {
+    "brain_and_gateway": {"conda_env": "robot_agent_integ", "python": "3.12.14"},
+    "control_execution": {"conda_env": "robot_exec", "python": "3.12.14"},
+    "frontend_build": {"node": "22.22.3", "npm": "10.9.8"},
+    "model_server": "llama.cpp build/bin/llama-server，需 --ctx-size 32768"
+  },
+  "live_state_at_recording": {
+    "scene_id": 3,
+    "scene_name": "ur5_table_sorting",
+    "scene_version": 12,
+    "objects": 19,
+    "browser_lease_id": "见 docs/stack_runbook.md 第 4 节，换机器需重新获取"
+  }
+}
