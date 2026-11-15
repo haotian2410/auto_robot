@@ -8,9 +8,9 @@
       "port": "127.0.0.1:8500",
       "remote": "git@github.com:haotian2410/robot_agent_brain.git",
       "branch": "main",
-      "head": "05c43e2",
-      "uncommitted_paths": 107,
-      "entry": "robot-brain serve --config config/webeditor.json",
+      "head": "1f37f0e",
+      "uncommitted_paths": 19,
+      "entry": "robot-brain serve --config config/webeditor_ols_latest.json",
       "docs": ["docs/contracts.md", "docs/scene_scale_color.md", "docs/webeditor_integration.md"]
     },
     "web-frontend": {
@@ -18,7 +18,7 @@
       "port": "0.0.0.0:8099",
       "remote": "git@github.com:tianlanqqcom/web-frontend.git",
       "branch": "master",
-      "head": "c182148",
+      "head": "dbe5b06",
       "uncommitted_paths": 11,
       "entry": "python local_gateway.py --port 8099",
       "build": "SPA 走 dist/，改前端后需 npm run build"
@@ -28,8 +28,8 @@
       "port": "0.0.0.0:8000",
       "remote": "git@github.com:tianlanqqcom/ObjectLibraryServer.git",
       "branch": "master",
-      "head": "f6f7497",
-      "uncommitted_paths": 1,
+      "head": "3ec4581",
+      "uncommitted_paths": 0,
       "entry": "python server.py",
       "health": "无 /health，用 GET /list?type=model&uid=0",
       "data_in_git": false,
@@ -40,8 +40,8 @@
       "port": null,
       "remote": "https://github.com/Leon-J1n/Auto_Robot_demo",
       "branch": "main",
-      "head": "414195b",
-      "uncommitted_paths": 8,
+      "head": "6502ac3",
+      "uncommitted_paths": 0,
       "entry": "由 link.control_child 以 runpy 执行 demo.run_demo",
       "physical_library": "/home/cscvlab/lht/_thirdparty/SimPlatform-main/build/libsim_platform_c.so"
     },

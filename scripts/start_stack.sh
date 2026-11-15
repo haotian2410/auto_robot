@@ -18,8 +18,8 @@ MODEL="${MODEL:-$MODEL_DIR/Qwen3.8-27B-UD-Q4_K_M.gguf}"
 MMPROJ="${MMPROJ:-$MODEL_DIR/mmproj-BF16.gguf}"
 CTX_SIZE="${QWEN38_CTX_SIZE:-32768}"          # 浏览器场景一轮约 21k tokens，默认 16384 会 400
 LOG_DIR="${LOG_DIR:-$ROOT/var/logs}"
-BRAIN_CONFIG="${BRAIN_CONFIG:-$ROOT/robot_agent_brain/config/webeditor.json}"
-JOINT_INVENTORY="${JOINT_INVENTORY:-$ROOT/robot_agent_brain/var/webeditor/joint_inventory.json}"
+BRAIN_CONFIG="${BRAIN_CONFIG:-$ROOT/robot_agent_brain/config/webeditor_ols_latest.json}"
+JOINT_INVENTORY="${JOINT_INVENTORY:-$ROOT/robot_agent_brain/var/webeditor/ols_latest_joint_inventory.json}"
 MODEL_PORT=8080 OLS_PORT=8000 GATEWAY_PORT=8099 BRAIN_PORT=8500
 
 mkdir -p "$LOG_DIR"
@@ -34,7 +34,9 @@ start() { # start <name> <port> <cwd> <log> <argv...>
   fi
   [ -d "$cwd" ] || { echo "[$name] 目录不存在：$cwd" >&2; return 1; }
   echo "[$name] 启动中，日志 $log"
-  ( cd "$cwd" && nohup "$@" >>"$log" 2>&1 & echo "[$name] pid $!" )
+  # setsid 让服务脱离本次 shell 的进程组；否则某些终端/exec 环境
+  # 会在启动脚本退出时一并回收后台子进程。
+  ( cd "$cwd" && setsid "$@" >>"$log" 2>&1 < /dev/null & echo "[$name] pid $!" )
 }
 
 model() {

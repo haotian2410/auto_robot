@@ -19,10 +19,10 @@
 仓库状态（HEAD 与工作区脏度，接手前先看清）：
 
 ```
-robot_agent_brain    main   05c43e2 2026-11-10  dirty=107
-web-frontend-master  master c182148 2026-11-11  dirty=11
-ObjectLibraryServer  master f6f7497 2026-11-10  dirty=1
-robot_agent_control  main   414195b 2026-11-12  dirty=8
+robot_agent_brain    main   3c568c2 2026-11-13  dirty=10
+web-frontend-master  master dbe5b06 2026-11-13  dirty=11
+ObjectLibraryServer  master 3ec4581 2026-11-13  dirty=0
+robot_agent_control  main   6502ac3 2026-11-13  dirty=0
 robot_agent_link / robot_agent_workspace        非 git 目录
 ```
 
