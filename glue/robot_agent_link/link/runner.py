@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import signal
 import subprocess
 from dataclasses import dataclass
@@ -20,7 +19,54 @@ TRAJ_NAME = "trajectory.traj"
 FRAMES_NAME = "frames.jsonl"
 FINAL_STATE_NAME = "final_state.npz"
 BLACKBOARD_NAME = "blackboard.json"
+NEW_ARTIFACTS = ('summary.json', 'commands/results.jsonl',
+                 'trajectories/execution.traj', 'trajectories/frames.jsonl',
+                 'snapshots/final_scene.json', 'snapshots/state.json',
+                 'snapshots/final_state.npz', 'snapshots/blackboard.json')
 LINK_ROOT = Path(__file__).resolve().parents[1]
+
+
+def read_report(out, *, partial=False):
+    """Adapt upstream persisted views; missing final summary is never success."""
+    out = Path(out)
+    summary = out / 'summary.json'
+    rows_path = out / 'commands/results.jsonl'
+    if summary.exists() or rows_path.exists():
+        report = json.loads(summary.read_text(encoding='utf-8')) if summary.exists() else {
+            'success': False, 'error': 'runner_report_missing'}
+        if not isinstance(report, dict):
+            raise ValueError('control_summary_invalid')
+        rows = []
+        lines = rows_path.read_text(encoding='utf-8').splitlines() if rows_path.exists() else []
+        for index, line in enumerate(lines):
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                if partial and index == len(lines) - 1:
+                    break
+                raise
+            if not isinstance(row, dict):
+                raise ValueError('control_command_result_invalid')
+            rows.append(row)
+        report['steps'] = rows
+        if report.get('failure'):
+            report['error'] = report['failure']
+        if not partial and summary.exists():
+            if report.get('command_count') != len(rows):
+                raise ValueError('control_command_result_count_mismatch')
+            # Only a final summary certifies the state file belongs to this run.
+            if report.get('final_state_file'):
+                path = (out / report['final_state_file']).resolve()
+                if path != (out / 'snapshots/state.json').resolve():
+                    raise ValueError('control_state_path_invalid')
+                report['final_state'] = json.loads(path.read_text(encoding='utf-8'))
+        return report
+    legacy = out / REPORT_NAME
+    if legacy.exists():
+        return json.loads(legacy.read_text(encoding='utf-8'))
+    return {'success': False, 'steps': [], 'error': 'runner_report_missing'}
 
 
 @dataclass
@@ -38,17 +84,25 @@ class ExecutionResult:
 
     @property
     def report_path(self):
-        return Path(self.workspace.out) / REPORT_NAME
+        out = Path(self.workspace.out)
+        return out / ('summary.json' if (out / 'summary.json').exists() else REPORT_NAME)
 
     @property
     def traj_path(self):
-        return Path(self.workspace.out) / TRAJ_NAME
+        out = Path(self.workspace.out)
+        return out / ('trajectories/execution.traj' if (out / 'summary.json').exists()
+                      or (out / 'trajectories').exists() else TRAJ_NAME)
+
+    @property
+    def final_scene_path(self):
+        return Path(self.workspace.out) / 'snapshots/final_scene.json'
 
     @property
     def artifacts(self):
         out = Path(self.workspace.out)
-        return {path.name: path for path in (out / REPORT_NAME, out / TRAJ_NAME, out / FRAMES_NAME,
-                                             out / FINAL_STATE_NAME, out / BLACKBOARD_NAME)
+        return {str(path.relative_to(out)): path for path in
+                [*(out / name for name in NEW_ARTIFACTS), out / REPORT_NAME, out / TRAJ_NAME,
+                 out / FRAMES_NAME, out / FINAL_STATE_NAME, out / BLACKBOARD_NAME]
                 if path.is_file()}
 
     def step_summaries(self):
@@ -89,7 +143,9 @@ def _terminate(process):
 
 def run(workspace, *, commands_path, catalog_path, python, control_root, library,
         object_library_url, timeout_seconds=180.0, backend="mujoco", progress=None,
-        progress_interval=1.0, child_env=None):
+        progress_interval=1.0, child_env=None, collision_model=None):
+    if collision_model not in (None, 'proxy', 'precise'):
+        raise ValueError('collision_model_invalid')
     argv = [str(python), "-m", "link.control_child",
             "--commands", str(commands_path),
             "--catalog", str(catalog_path),
@@ -97,6 +153,8 @@ def run(workspace, *, commands_path, catalog_path, python, control_root, library
             "--backend", backend,
             "--library", str(library),
             "--object-library-url", str(object_library_url)]
+    if collision_model is not None:
+        argv += ['--collision-model', collision_model]
     log_path = workspace.root / "link_run.log"
     with log_path.open("wb") as log:
         process = subprocess.Popen(argv, cwd=workspace.root, env=_child_env(
@@ -125,22 +183,19 @@ def run(workspace, *, commands_path, catalog_path, python, control_root, library
                         returncode = _terminate(process)
                         break
                     try:
-                        partial = json.loads((Path(workspace.out) / REPORT_NAME).read_text(encoding="utf-8"))
+                        partial = read_report(workspace.out, partial=True)
                     except (OSError, ValueError):
                         continue
                     if isinstance(partial, dict) and partial != seen:
                         seen = partial
                         progress(partial)
-    # The scene registrar rewrites catalog.json in place; keep the log noise
-    # inside the scratch directory we own instead of letting it accumulate.
-    logs = workspace.root / "logs"
-    if logs.is_dir():
-        shutil.rmtree(logs, ignore_errors=True)
+    # Keep request inputs, native logs and output together for replay/audit.
     raw = log_path.read_bytes()
-    report_path = Path(workspace.out) / REPORT_NAME
-    report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.is_file() else {
-        "success": False, "steps": [],
-        "error": "runner_report_missing", "stderr": raw.decode("utf-8", "replace")[-4000:]}
+    try:
+        report = read_report(workspace.out)
+    except (OSError, ValueError, TypeError) as exc:
+        report = {'success': False, 'steps': [], 'error': 'control_output_invalid',
+                  'output_error': str(exc)}
     return ExecutionResult(returncode=returncode, timed_out=timed_out, report=report,
                            workspace=workspace, log_path=log_path,
                            stdout_tail=raw.decode("utf-8", "replace")[-4000:])

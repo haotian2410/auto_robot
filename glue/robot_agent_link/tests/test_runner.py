@@ -72,6 +72,15 @@ def test_the_perception_endpoint_the_child_is_told_is_the_one_it_uses(stage):
     assert invocation(result)["vlm_base_url"] == "http://127.0.0.1:8080/v1"
 
 
+def test_explicit_collision_representation_is_forwarded(stage):
+    ws, commands_path, _ = stage({"rows": 1})
+    before = {str(p): p.read_bytes() for p in ws.root.rglob('scene.json')}
+    result = launch(ws, commands_path, collision_model='precise')
+    assert invocation(result)['collision_model'] == 'precise'
+    assert before
+    assert all(Path(p).read_bytes() == content for p, content in before.items())
+
+
 def test_an_unnamed_child_environment_leaves_the_child_alone(stage):
     ws, commands_path, _ = stage({"rows": 1})
     result = launch(ws, commands_path, child_env={"ROBOT_LINK_VLM_BASE_URL": ""})
@@ -81,7 +90,7 @@ def test_an_unnamed_child_environment_leaves_the_child_alone(stage):
 def test_the_logs_the_native_library_writes_stay_inside_the_scratch_directory(stage):
     ws, commands_path, _ = stage({"rows": 2})
     result = launch(ws, commands_path)
-    assert not (ws.root / "logs").exists()
+    assert (ws.root / "logs").exists()
     assert result.log_path == ws.root / "link_run.log" and result.log_path.is_file()
     # ``artifacts`` names the five files the control side promises; the fake's own
     # evidence file is not one of them.

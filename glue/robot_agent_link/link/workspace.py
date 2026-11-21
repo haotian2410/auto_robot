@@ -12,7 +12,6 @@ the other two are stamped from it.
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 SCENE_FILE_NAME = "scene.json"
@@ -23,13 +22,19 @@ class ExecutionWorkspace:
     def __init__(self, root):
         self.root = Path(root).resolve()
         self.catalog_path = self.root / CATALOG_NAME
-        self.out = self.root / "out"
+        self.out = self.root / "output"
 
     @classmethod
     def open(cls, root, request_id):
-        ws = cls(Path(root) / str(request_id))
-        if ws.root.is_dir():
-            shutil.rmtree(ws.root)
+        identifier = str(request_id)
+        if not identifier or identifier in {'.', '..'} or any(c in identifier for c in '/\\'):
+            raise ValueError('request_id_invalid')
+        base = Path(root).resolve()
+        ws = cls(base / identifier)
+        if ws.root.parent != base:
+            raise ValueError('request_workspace_escape')
+        # Never erase an earlier execution or replay a request implicitly.
+        ws.root.mkdir(parents=True, exist_ok=False)
         (ws.root / "scenes").mkdir(parents=True, exist_ok=True)
         (ws.out).mkdir(parents=True, exist_ok=True)
         return ws
@@ -38,7 +43,7 @@ class ExecutionWorkspace:
         return self.root / "scenes" / str(scene_id) / SCENE_FILE_NAME
 
     def commands_path(self, request_id):
-        return self.root / "commands" / str(request_id) / "commands.json"
+        return self.root / "commands.json"
 
     def write_scene(self, scene_id, document):
         """Store the browser/OLS document byte-for-byte.
@@ -100,6 +105,7 @@ def build(workspace_root, *, scene_document, task, asset_root, request_id=None):
     document["request_id"] = identifier
     document["scene_id"] = header["scene_id"]
     document["scene_version"] = header["scene_version"]
+    document["scene_file"] = str(ws.scene_path(header["scene_id"]).relative_to(ws.root))
     ws.write_scene(header["scene_id"], raw)
     ws.write_catalog(asset_root)
     return ws, ws.write_commands(document), document

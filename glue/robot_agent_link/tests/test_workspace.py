@@ -33,27 +33,29 @@ def test_the_commands_document_is_stamped_from_the_scene_file(tmp_path, fixtures
     assert (written["scene_id"], written["scene_version"]) == (header["scene_id"], header["scene_version"])
     assert document == written
     assert ws.scene_path(header["scene_id"]).read_bytes() == scene
-    assert written == json.loads(fixtures.bytes("commands_link_0002.json"))
+    assert {k: v for k, v in written.items() if k != 'scene_file'} == json.loads(fixtures.bytes("commands_link_0002.json"))
+    assert (commands_path.parent / written['scene_file']).read_bytes() == scene
 
 
 def test_one_directory_per_request_and_an_absolute_asset_root(tmp_path, fixtures):
     ws, commands_path, document = materialize(tmp_path, fixtures)
     assert ws.root == tmp_path / document["request_id"]
-    assert commands_path == ws.root / "commands" / document["request_id"] / "commands.json"
+    assert commands_path == ws.root / "commands.json"
     catalog = json.loads(ws.catalog_path.read_text(encoding="utf-8"))
     # The control joins both asset_root and each scene path against the catalog's
     # own directory, so a relative root would silently read another library.
     assert Path(catalog["asset_root"]).is_absolute()
     assert catalog["asset_root"] == str(Path(ASSET_ROOT).resolve())
     assert catalog["scenes"] == {}
-    assert (ws.root / "out").is_dir()
+    assert (ws.root / "output").is_dir()
 
 
-def test_rebuilding_a_request_starts_from_empty(tmp_path, fixtures):
+def test_rebuilding_a_request_never_erases_execution_evidence(tmp_path, fixtures):
     ws, _, document = materialize(tmp_path, fixtures)
     (ws.out / "report.json").write_text("stale", encoding="utf-8")
-    again, _, _ = materialize(tmp_path, fixtures)
-    assert again.root == ws.root and not (again.out / "report.json").exists()
+    with pytest.raises(FileExistsError):
+        materialize(tmp_path, fixtures)
+    assert (ws.out / "report.json").read_text() == 'stale'
 
 
 def test_the_control_registrar_accepts_the_workspace_it_is_given(tmp_path, fixtures,

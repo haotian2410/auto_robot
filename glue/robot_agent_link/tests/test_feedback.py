@@ -63,6 +63,17 @@ def test_names_are_translated_once_at_the_boundary(scene):
     assert all(isinstance(identifier, int) for identifier in names.values())
 
 
+@pytest.mark.parametrize('started, timed_out, final, verified', [
+    (False, False, None, True), (None, False, None, False),
+    (True, False, None, False), (False, True, None, False),
+    (False, False, {'objects': {}}, False),
+])
+def test_preflight_evidence_is_explicit(tmp_path, scene, started, timed_out, final, verified):
+    report = {'success': False, 'steps': [], 'execution_started': started, 'final_state': final}
+    result = outcome(tmp_path, report, returncode=1, timed_out=timed_out)
+    assert summarize(result, scene)['no_effect_verified'] is verified
+
+
 def test_a_clean_run_reports_every_command_and_one_moved_object(tmp_path, scene):
     summary = summarize(outcome(tmp_path, run_report(holding="Apple")), scene)
     assert summary["ok"] is True and summary["error_code"] is None and summary["detail"] is None
@@ -70,6 +81,48 @@ def test_a_clean_run_reports_every_command_and_one_moved_object(tmp_path, scene)
     assert [step["command_id"] for step in summary["steps"]] == [str(number) for number in range(1, 9)]
     assert summary["moved"] == {APPLE: {"position": [0.28, 0.165, 0.66], "quaternion_xyzw": QUATERNION}}
     assert summary["holding_object"] == APPLE
+
+
+def test_new_preflight_report_needs_no_final_snapshot(tmp_path, scene):
+    report = dict(success=False, execution_started=False, command_count=0,
+                  commands_file='commands/results.jsonl',
+                  error=dict(stage='validation', message='invalid object name'))
+    summary = summarize(outcome(tmp_path, report, returncode=1), scene)
+    assert summary['no_effect_verified'] is True
+    assert summary['snapshot_error'] is None
+    assert summary['error_code'] != 'control_final_scene_invalid'
+    assert summary['detail'] == 'invalid object name'
+
+
+def test_failure_without_legacy_stage_does_not_hide_original_message(tmp_path, scene):
+    report = dict(success=False, execution_started=False, steps=[],
+                  error=dict(failed_stage='validation', error_message='joint1 velocity is zero'))
+    summary = summarize(outcome(tmp_path, report, returncode=1), scene)
+    assert summary['error_code'] == 'validation'
+    assert summary['detail'] == 'joint1 velocity is zero'
+
+
+def test_contradictory_command_count_cannot_certify_no_effect(tmp_path, scene):
+    report = dict(success=False, execution_started=False, command_count=1, steps=[])
+    assert summarize(outcome(tmp_path, report, returncode=1), scene)['no_effect_verified'] is False
+
+
+def test_articulated_mechanism_state_is_mapped_to_scene_object_id(tmp_path, scene):
+    document = json.loads(json.dumps(scene))
+    document["objects"].append({
+        "object_id_in_scene": 19,
+        "object_name_in_scene": "Drawer",
+        "components": [{"component_type": "RobotDriver", "properties": {
+            "role": "passive", "joint_sequence": ["drawer01", "drawer02"]
+        }}],
+    })
+    report = run_report()
+    report["final_state"]["mechanisms"] = {
+        "Drawer__link": {"joint_name": "drawer01", "joint_position": 0.12},
+        "Drawer__link2": {"joint_name": "drawer02", "joint_position": 0.08},
+    }
+    summary = summarize(outcome(tmp_path, report), document)
+    assert summary["articulated_joints"] == {19: {"drawer01": 0.12, "drawer02": 0.08}}
 
 
 def test_the_clip_is_offered_only_when_the_runner_left_a_non_empty_one(tmp_path, scene):
@@ -160,7 +213,7 @@ def test_a_report_the_runner_had_to_invent_is_not_a_crash_in_the_reader(tmp_path
     assert summary["error_code"] == "execution_runner_failed"
     # A runner code is not a sentence a browser user can act on, so the bridge
     # names what it means instead of forwarding the key.
-    assert summary["detail"] == "控制端子进程没有写出 report.json，可能在启动或首次步进时退出"
+    assert summary["detail"] == "控制端子进程没有写出最终结果摘要，可能在启动或执行过程中退出"
     assert summary["steps"] == []
 
 

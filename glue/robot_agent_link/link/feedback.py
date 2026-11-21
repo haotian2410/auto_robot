@@ -9,6 +9,8 @@ used as the translation table here, at the boundary, rather than downstream.
 from __future__ import annotations
 
 from pathlib import Path
+from .joint_feedback import measured_joints, complete_state
+from .final_scene import validated_snapshot
 
 SUCCESS = "success"
 # A MuJoCo settle is not a placement: reporting a millimetre of drift as a move
@@ -57,7 +59,8 @@ def _short(text) -> str:
 
 # Failures that never reach the control's report writer, so error_messages.py has
 # nothing to describe and the sentence is ours to write.
-RUNNER_DETAILS = {"runner_report_missing": "控制端子进程没有写出 report.json，可能在启动或首次步进时退出"}
+RUNNER_DETAILS = {"runner_report_missing": "控制端子进程没有写出最终结果摘要，可能在启动或执行过程中退出",
+                  "control_output_invalid": "控制端输出不完整或格式无效，实际状态需核验"}
 
 
 def steps(report, describe=None) -> list[dict]:
@@ -83,7 +86,7 @@ def _error_code(report, steps) -> str | None:
     for step in steps:
         if step["status"] != SUCCESS:
             return step["error_code"] or "execution_step_failed"
-    return str(error["stage"]) if error else None
+    return str(error.get("stage") or error.get("failed_stage") or "control_reported_failure") if error else None
 
 
 def _failed_error(report) -> dict | str | None:
@@ -137,14 +140,46 @@ def summarize(result, scene_document, describe=None) -> dict:
             continue
         moved[identifier] = {"position": [float(v) for v in pose["position"]],
                              "quaternion_xyzw": [float(v) for v in pose["quaternion_xyzw"]]}
+    # Control reports articulated mechanisms by joint name.  Translate those
+    # names to Scene object ids at the bridge boundary so Brain can persist
+    # drawer/door state without treating it as a Transform edit.
+    articulated_joints, active_joint_ids = measured_joints(final, scene_document)
     held = (final.get("gripper") or {}).get("object_id")
     traj = Path(result.traj_path)
-    return {"ok": result.succeeded,
+    verified = complete_state(final, scene_document, articulated_joints, active_joint_ids)
+    snapshot = None
+    snapshot_error = None
+    no_effect = (report.get("execution_started") is False
+                 and report.get("success") is False
+                 and report.get("command_count", 0) == 0
+                 and (report.get("steps") == [] or
+                      (report.get("commands_file") and report.get("command_count") == 0
+                       and not report.get("steps")))
+                 and not completed and not final and not result.timed_out
+                 and report.get("successful_command_count", 0) == 0
+                 and report.get("failed_command_count", 0) == 0
+                 and not (traj.is_file() and traj.stat().st_size))
+    # New upstream runs must provide their authored final Scene. Legacy reports
+    # retain the measured-state adapter for old fixtures and saved evidence.
+    if report.get('commands_file') and not no_effect:
+        try:
+            snapshot = validated_snapshot(result.final_scene_path, scene_document, articulated_joints)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            snapshot_error = str(exc)
+            verified = False
+    return {"ok": result.succeeded and snapshot_error is None,
             "steps": completed,
             "moved": moved,
+            "articulated_joints": articulated_joints,
+            "active_joint_ids": sorted(active_joint_ids),
+            "state_verified": verified,
+            "final_scene": snapshot if verified else None,
+            "final_scene_path": str(result.final_scene_path) if snapshot is not None else None,
+            "no_effect_verified": bool(no_effect),
             "holding_object": names.get(held) if isinstance(held, str) else None,
             "traj_path": str(traj) if traj.is_file() and traj.stat().st_size else None,
-            "error_code": None if result.succeeded else (_error_code(report, completed)
+            "snapshot_error": snapshot_error,
+            "error_code": 'control_final_scene_invalid' if snapshot_error and result.succeeded else None if result.succeeded else (_error_code(report, completed)
                                                           or ("execution_timeout" if result.timed_out
                                                               else "execution_runner_failed")),
-            "detail": None if result.succeeded else _detail(result, describe)}
+            "detail": snapshot_error if result.succeeded else _detail(result, describe)}

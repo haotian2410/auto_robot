@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ("commands", "catalog", "output", "backend", "library", "object-library-url"):
         parser.add_argument("--" + name)
+    parser.add_argument('--collision-model', choices=('proxy', 'precise'))
     args, extra = parser.parse_known_args()
     out = pathlib.Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
@@ -38,6 +39,7 @@ def main():
         "commands_readable": pathlib.Path(args.commands).is_file(),
         "catalog_readable": pathlib.Path(args.catalog).is_file(),
         "backend": args.backend,
+        "collision_model": args.collision_model,
         "object_library_url": getattr(args, "object_library_url"),
         "paths_absolute": all(pathlib.Path(value).is_absolute()
                              for value in (args.commands, args.catalog, args.output, args.library))}),
