@@ -28,6 +28,34 @@ def object_names(scene_document) -> dict[str, int]:
             and isinstance(item.get("object_id_in_scene"), int)}
 
 
+def restore_runtime_state_names(report: dict, name_mapping: list[dict]) -> None:
+    """Restore control transport names in the measured final state.
+
+    ``SubprocessExecutionAdapter`` calls this at the bridge boundary before
+    ``summarize``.  Keeping the helper here also makes the name contract
+    explicit for other bridge callers and keeps feedback validation independent
+    of the control repository's internal naming scheme.
+    """
+    if not isinstance(report, dict):
+        return
+    mapping = {
+        row.get("transport_name"): row.get("original_name")
+        for row in name_mapping
+        if isinstance(row, dict)
+        and isinstance(row.get("transport_name"), str)
+        and isinstance(row.get("original_name"), str)
+    }
+    final = report.get("final_state")
+    if not isinstance(final, dict):
+        return
+    gripper = final.get("gripper")
+    if isinstance(gripper, dict) and isinstance(gripper.get("object_id"), str):
+        gripper["object_id"] = mapping.get(gripper["object_id"], gripper["object_id"])
+    objects = final.get("objects")
+    if isinstance(objects, dict):
+        final["objects"] = {mapping.get(key, key): value for key, value in objects.items()}
+
+
 def _transform(scene_document, object_id) -> dict:
     for item in scene_document.get("objects") or []:
         if isinstance(item, dict) and item.get("object_id_in_scene") == object_id:

@@ -14,6 +14,17 @@ def scene():
                 'initial_joint_positions_rad': {'j': 0}}}]}]}
 
 
+@pytest.mark.parametrize('height', [.5, -105.236])
+def test_bridge_does_not_judge_simulated_position(tmp_path, height):
+    before = scene()
+    after = deepcopy(before)
+    after['objects'][0]['components'][0]['properties']['position'][2] = height
+    after['objects'][0]['components'][1]['properties']['now_joint_positions_rad'] = {'j': 0}
+    path = tmp_path / 'final_scene.json'
+    path.write_text(json.dumps(after))
+    assert validated_snapshot(path, before, {2: {'j': 0}}) == after
+
+
 def test_snapshot_keeps_initial_and_accepts_measured_current(tmp_path):
     before = scene()
     after = deepcopy(before)
@@ -27,17 +38,6 @@ def test_snapshot_keeps_initial_and_accepts_measured_current(tmp_path):
         validated_snapshot(path, before, {2: {'j': .5}})
 
 
-@pytest.mark.parametrize('height', [.5, -105.236])
-def test_bridge_does_not_judge_simulated_position(tmp_path, height):
-    before = scene()
-    after = deepcopy(before)
-    after['objects'][0]['components'][0]['properties']['position'][2] = height
-    after['objects'][0]['components'][1]['properties']['now_joint_positions_rad'] = {'j': 0}
-    path = tmp_path / 'final_scene.json'
-    path.write_text(json.dumps(after))
-    assert validated_snapshot(path, before, {2: {'j': 0}}) == after
-
-
 def test_unchanged_attachment_transform_can_omit_pose(tmp_path):
     before = scene()
     before['objects'][0]['components'][0]['properties'] = {'scale': [1, 1, 1], 'parent': 1}
@@ -48,6 +48,36 @@ def test_unchanged_attachment_transform_can_omit_pose(tmp_path):
     path = tmp_path / 'final_scene.json'
     path.write_text(json.dumps(after))
     assert validated_snapshot(path, before, {2: {'j': .5}}) == after
+
+
+def test_runtime_robot_model_ref_is_not_published_as_scene_component(tmp_path):
+    before = scene()
+    after = deepcopy(before)
+    after['objects'][0]['components'].append({
+        'component_type': 'RobotModelRef',
+        'properties': {'collision_geometry': {'link_overrides': {}}},
+    })
+    after['objects'][0]['components'][1]['properties']['now_joint_positions_rad'] = {'j': 0}
+    path = tmp_path / 'final_scene.json'
+    path.write_text(json.dumps(after))
+    result = validated_snapshot(path, before, {2: {'j': 0}})
+    assert all(c['component_type'] != 'RobotModelRef'
+               for c in result['objects'][0]['components'])
+
+
+def test_component_order_and_runtime_properties_are_not_scene_identity(tmp_path):
+    before = scene()
+    after = deepcopy(before)
+    # A control snapshot may reorder components and carry mutable runtime
+    # metadata.  Identity is still checked by object id and component type.
+    after['objects'][0]['components'].reverse()
+    after['objects'][0]['components'][1]['properties']['runtime_status'] = 'settled'
+    for component in after['objects'][0]['components']:
+        if component['component_type'] == 'RobotDriver':
+            component['properties']['now_joint_positions_rad'] = {'j': .25}
+    path = tmp_path / 'final_scene.json'
+    path.write_text(json.dumps(after))
+    assert validated_snapshot(path, before, {2: {'j': .25}}) == after
 
 
 @pytest.mark.parametrize('field', ['position', 'quaternion_xyzw'])

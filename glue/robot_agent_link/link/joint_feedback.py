@@ -40,13 +40,24 @@ def measured_joints(final, document):
 def complete_state(final, document, joints, active):
     """Fail closed for partial execution: complete arm, passive and rigid state.
 
-    A held payload cannot currently be reconstructed by the fresh subprocess.
-    Such a run remains unknown even if its arm positions were measured.
+    A held payload is recoverable when the control report marks the gripper
+    state known and names an object present in the submitted Scene.  Earlier
+    versions treated every holding result as unknown, which made a successful
+    grasp look incomplete even though the arm joints and final Scene were
+    available for the next task.
     """
     if not active:
         return False
     gripper = final.get('gripper') or {}
-    if gripper.get('known') is not True or gripper.get('holding') is not False or gripper.get('object_id'):
+    if gripper.get('known') is not True or not isinstance(gripper.get('holding'), bool):
+        return False
+    held_name = gripper.get('object_id')
+    names = {item.get('object_name_in_scene') for item in document.get('objects', [])
+             if isinstance(item, dict)}
+    if gripper['holding']:
+        if not isinstance(held_name, str) or not held_name or held_name not in names:
+            return False
+    elif held_name:
         return False
     for obj in document.get('objects', []):
         components = {c['component_type']: c.get('properties', {}) for c in obj.get('components', [])}
