@@ -128,6 +128,12 @@ def _child_env(control_root, library, workspace_root, extra=None, base=None):
 
 def _terminate(process):
     """The child owns native threads and a process group of its own."""
+    if os.name == 'nt':
+        # Windows has no POSIX process groups or SIGKILL; Popen.kill uses
+        # TerminateProcess for this isolated control child.
+        if process.poll() is None:
+            process.kill()
+        return process.wait()
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(process.pid, sig)

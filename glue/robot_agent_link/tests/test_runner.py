@@ -17,7 +17,7 @@ from link.runner import LINK_ROOT, run
 from link.workspace import build
 
 FAKE_CONTROL = Path(__file__).with_name("fake_control")
-LIBRARY = "/home/cscvlab/lht/_thirdparty/SimPlatform-main/build/libsim_platform_c.so"
+LIBRARY = str(Path(__file__).with_name("libsim_platform_c.so").resolve())
 
 
 @pytest.fixture
@@ -133,5 +133,12 @@ def test_an_expired_budget_kills_the_child_it_started(stage, poll):
     assert time.monotonic() - started < 10
     assert result.timed_out is True and result.succeeded is False
     assert result.report["error"] == "runner_report_missing"
-    with pytest.raises(ProcessLookupError):
+    try:
         os.kill(invocation(result)["pid"], 0)
+    except OSError as exc:
+        if os.name == "nt":
+            assert exc.winerror == 87
+        else:
+            assert isinstance(exc, ProcessLookupError)
+    else:
+        pytest.fail("timed-out control child is still running")
