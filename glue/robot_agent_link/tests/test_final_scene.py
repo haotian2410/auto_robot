@@ -59,3 +59,26 @@ def test_present_pose_cannot_disappear_in_final_snapshot(tmp_path, field):
     path.write_text(json.dumps(after))
     with pytest.raises(ValueError, match='control_final_scene_pose_invalid'):
         validated_snapshot(path, before, {})
+
+
+def test_rounded_unit_quaternion_is_normalized(tmp_path):
+    before = scene()
+    after = deepcopy(before)
+    after['objects'][0]['components'][0]['properties']['quaternion_xyzw'] = [0, 0, .7071, .7071]
+    path = tmp_path / 'final_scene.json'
+    path.write_text(json.dumps(after))
+    after['objects'][0]['components'][1]['properties']['now_joint_positions_rad'] = {'j': 0}
+    path.write_text(json.dumps(after))
+    result = validated_snapshot(path, before, {2: {'j': 0}})
+    quat = result['objects'][0]['components'][0]['properties']['quaternion_xyzw']
+    assert sum(v * v for v in quat) == pytest.approx(1.0)
+
+
+def test_materially_non_unit_quaternion_is_rejected(tmp_path):
+    before = scene()
+    after = deepcopy(before)
+    after['objects'][0]['components'][0]['properties']['quaternion_xyzw'] = [0, 0, .5, .5]
+    path = tmp_path / 'final_scene.json'
+    path.write_text(json.dumps(after))
+    with pytest.raises(ValueError, match='control_final_scene_quaternion_invalid'):
+        validated_snapshot(path, before, {})

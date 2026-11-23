@@ -9,12 +9,12 @@ def validated_snapshot(path, source, joints):
     before, after = deepcopy(source), deepcopy(candidate)
     if len(after.get('objects', [])) != len(before.get('objects', [])):
         raise ValueError('control_final_scene_object_set_changed')
-    for left, right in zip(before['objects'], after['objects']):
+    for object_index, (left, right) in enumerate(zip(before['objects'], after['objects'])):
         if left['object_id_in_scene'] != right.get('object_id_in_scene'):
             raise ValueError('control_final_scene_identity_changed')
         if len(left['components']) != len(right.get('components', [])):
             raise ValueError('control_final_scene_components_changed')
-        for old, new in zip(left['components'], right['components']):
+        for component_index, (old, new) in enumerate(zip(left['components'], right['components'])):
             kind = old['component_type']
             if kind != new.get('component_type'):
                 raise ValueError('control_final_scene_components_changed')
@@ -30,8 +30,22 @@ def validated_snapshot(path, source, joints):
                             isinstance(v, (int, float)) and not isinstance(v, bool)
                             and math.isfinite(v) for v in value):
                         raise ValueError('control_final_scene_pose_invalid')
-                    if key == 'quaternion_xyzw' and abs(sum(v*v for v in value) - 1) > 1e-5:
-                        raise ValueError('control_final_scene_quaternion_invalid')
+                    if key == 'quaternion_xyzw':
+                        norm_sq = sum(v * v for v in value)
+                        # Control snapshots may round unit quaternions (for example
+                        # 0.707106... -> 0.7071).  Accept only a small, finite
+                        # serialization drift and normalize the value before publish.
+                        if norm_sq <= 1e-12 or abs(norm_sq - 1.0) > 5e-4:
+                            raise ValueError('control_final_scene_quaternion_invalid')
+                        norm = math.sqrt(norm_sq)
+                        normalized = [v / norm for v in value]
+                        # Compare the normalized representation so the bridge
+                        # can publish it without treating serialization drift as
+                        # an immutable-scene mutation.
+                        a[key] = normalized
+                        b[key] = normalized
+                        candidate['objects'][object_index]['components'][component_index]['properties'][key] = normalized
+                        continue
                     a.pop(key, None)
                     b.pop(key, None)
             elif kind == 'RobotDriver' and a.get('joint_sequence'):
