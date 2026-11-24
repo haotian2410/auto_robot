@@ -11,7 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from link.feedback import DETAIL_LIMIT, MOVE_TOLERANCE_M, object_names, steps, summarize
+from link.feedback import (DETAIL_LIMIT, MOVE_TOLERANCE_M, object_names, steps, summarize,
+                           restore_runtime_state_names)
 from link.runner import ExecutionResult
 
 APPLE, TRAY = 7, 13
@@ -74,15 +75,6 @@ def test_preflight_evidence_is_explicit(tmp_path, scene, started, timed_out, fin
     assert summarize(result, scene)['no_effect_verified'] is verified
 
 
-def test_a_clean_run_reports_every_command_and_one_moved_object(tmp_path, scene):
-    summary = summarize(outcome(tmp_path, run_report(holding="Apple")), scene)
-    assert summary["ok"] is True and summary["error_code"] is None and summary["detail"] is None
-    assert [step["status"] for step in summary["steps"]] == ["success"] * 8
-    assert [step["command_id"] for step in summary["steps"]] == [str(number) for number in range(1, 9)]
-    assert summary["moved"] == {APPLE: {"position": [0.28, 0.165, 0.66], "quaternion_xyzw": QUATERNION}}
-    assert summary["holding_object"] == APPLE
-
-
 def test_new_preflight_report_needs_no_final_snapshot(tmp_path, scene):
     report = dict(success=False, execution_started=False, command_count=0,
                   commands_file='commands/results.jsonl',
@@ -105,6 +97,52 @@ def test_failure_without_legacy_stage_does_not_hide_original_message(tmp_path, s
 def test_contradictory_command_count_cannot_certify_no_effect(tmp_path, scene):
     report = dict(success=False, execution_started=False, command_count=1, steps=[])
     assert summarize(outcome(tmp_path, report, returncode=1), scene)['no_effect_verified'] is False
+
+
+def test_a_clean_run_reports_every_command_and_one_moved_object(tmp_path, scene):
+    summary = summarize(outcome(tmp_path, run_report(holding="Apple")), scene)
+    assert summary["ok"] is True and summary["error_code"] is None and summary["detail"] is None
+    assert [step["status"] for step in summary["steps"]] == ["success"] * 8
+    assert [step["command_id"] for step in summary["steps"]] == [str(number) for number in range(1, 9)]
+    assert summary["moved"] == {APPLE: {"position": [0.28, 0.165, 0.66], "quaternion_xyzw": QUATERNION}}
+    assert summary["holding_object"] == APPLE
+
+
+def test_verified_grasp_state_is_recoverable_for_next_task(tmp_path, scene):
+    # A successful pick intentionally ends with holding=true.  The measured
+    # object identity is valid state, not an incomplete final snapshot.
+    report = run_report(holding="Apple")
+    report["final_state"].update({
+        "robot_object_id": 2,
+        "joint_names": ["j1"],
+        "joints": [0.1],
+        "gripper": {"known": True, "holding": True, "object_id": "Apple"},
+        "scene_driver_joints": {"2": {"j1": 0.1}},
+    })
+    from link.joint_feedback import complete_state
+    document = {"objects": [
+        {"object_id_in_scene": 2, "object_name_in_scene": "Arm",
+         "components": [{"component_type": "RobotDriver", "properties":
+                         {"joint_sequence": ["j1"]}}]},
+        {"object_id_in_scene": APPLE, "object_name_in_scene": "Apple",
+         "components": [{"component_type": "MetadataRef", "properties": {}}]},
+    ]}
+    joints, active = {2: {"j1": 0.1}}, {2}
+    assert complete_state(report["final_state"], document, joints, active) is True
+
+
+def test_transport_names_are_restored_in_measured_grasp_state():
+    """A non-ASCII/duplicate Scene name must not invalidate a successful pick."""
+    report = {"final_state": {
+        "objects": {"object_7": {"position": [0.1, 0.2, 0.3],
+                                   "quaternion_xyzw": STANDING}},
+        "gripper": {"known": True, "holding": True, "object_id": "object_7"},
+    }}
+    restore_runtime_state_names(report, [{"object_id": 7,
+                                          "original_name": "苹果",
+                                          "transport_name": "object_7"}])
+    assert report["final_state"]["gripper"]["object_id"] == "苹果"
+    assert "苹果" in report["final_state"]["objects"]
 
 
 def test_articulated_mechanism_state_is_mapped_to_scene_object_id(tmp_path, scene):
@@ -222,3 +260,22 @@ def test_step_rows_keep_their_identifiers_as_text(scene):
         [{"command_id": "4", "skill_name": "put", "status": "failed",
           "error_code": None, "detail": None}]
     assert steps({}) == []
+
+
+def test_execution_checkpoint_is_forwarded_by_stable_object_id(tmp_path, scene):
+    report = run_report(holding='Apple')
+    report['final_state'].update(robot_object_id=2, joint_names=['j1'], joints=[.1],
+        scene_driver_joints={'2': {'j1': .1}})
+    report['final_state']['gripper'].update(known=True, holding=True)
+    checkpoint = {'schema_version': 1, 'held_object_id': APPLE, 'source_request_id': 'link-1'}
+    report['final_state']['execution_checkpoint'] = checkpoint
+    document = {'objects': [
+        {'object_id_in_scene': 2, 'object_name_in_scene': 'Arm', 'components': [
+            {'component_type': 'RobotDriver', 'properties': {'joint_sequence': ['j1']}}]},
+        {'object_id_in_scene': APPLE, 'object_name_in_scene': 'Apple', 'components': [
+            {'component_type': 'MetadataRef', 'properties': {}}]}]}
+    summary = summarize(outcome(tmp_path, report), document)
+    assert summary['state_verified']
+    assert summary['execution_checkpoint'] == checkpoint
+    report['final_state']['gripper']['known'] = False
+    assert summarize(outcome(tmp_path, report), document)['execution_checkpoint'] is None

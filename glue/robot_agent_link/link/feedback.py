@@ -205,6 +205,7 @@ def summarize(result, scene_document, describe=None) -> dict:
             "final_scene_path": str(result.final_scene_path) if snapshot is not None else None,
             "no_effect_verified": bool(no_effect),
             "holding_object": names.get(held) if isinstance(held, str) else None,
+            "execution_checkpoint": final.get("execution_checkpoint") if verified else None,
             "traj_path": str(traj) if traj.is_file() and traj.stat().st_size else None,
             "snapshot_error": snapshot_error,
             "error_code": 'control_final_scene_invalid' if snapshot_error and result.succeeded else None if result.succeeded else (_error_code(report, completed)

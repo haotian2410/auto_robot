@@ -153,7 +153,18 @@ def run(workspace, *, commands_path, catalog_path, python, control_root, library
             "--backend", backend,
             "--library", str(library),
             "--object-library-url", str(object_library_url)]
-    if collision_model is not None:
+    # ``--collision-model`` was part of the older control CLI.  Newer control
+    # revisions select the verified collision pipeline from their own runtime
+    # configuration.  Pass the option only when the checked-out control
+    # explicitly advertises it; do not make the bridge choose a collision
+    # policy or fail before the control process can produce a report.
+    collision_cli_supported = False
+    try:
+        run_demo_source = Path(control_root) / 'demo' / 'run_demo.py'
+        collision_cli_supported = run_demo_source.is_file() and '--collision-model' in run_demo_source.read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        collision_cli_supported = False
+    if collision_model is not None and collision_cli_supported:
         argv += ['--collision-model', collision_model]
     log_path = workspace.root / "link_run.log"
     with log_path.open("wb") as log:
