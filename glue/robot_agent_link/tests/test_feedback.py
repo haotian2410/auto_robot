@@ -236,8 +236,12 @@ def test_the_recorded_first_run_reduces_to_a_refusal_without_touching_the_scene(
     assert len(summary["detail"]) == DETAIL_LIMIT + 1
 
 
-def test_a_run_that_outlived_its_budget_is_a_timeout(tmp_path, scene):
-    summary = summarize(outcome(tmp_path, {"success": False, "steps": []}, returncode=-9,
+@pytest.mark.parametrize("error", [None, "runner_report_missing"])
+def test_a_run_that_outlived_its_budget_is_a_timeout(tmp_path, scene, error):
+    report = {"success": False, "steps": []}
+    if error is not None:
+        report["error"] = error
+    summary = summarize(outcome(tmp_path, report, returncode=-9,
                                timed_out=True), scene)
     assert summary["ok"] is False and summary["traj_path"] is None
     assert summary["error_code"] == "execution_timeout"

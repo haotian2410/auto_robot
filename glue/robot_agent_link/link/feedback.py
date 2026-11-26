@@ -142,7 +142,9 @@ def _detail(result, describe=None) -> str:
     """
     report = result.report or {}
     error = _failed_error(report)
-    if isinstance(error, dict):
+    if result.timed_out and error in (None, "runner_report_missing"):
+        message = "执行超时：控制端子进程未在规定时间内结束，已被终止"
+    elif isinstance(error, dict):
         if describe is not None:
             return _short(describe(error))
         message = error.get("message") or error.get("error_message") or result.stdout_tail
